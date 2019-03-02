@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PGA.Coach website
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: The S3 bucket for PGA.Coach website
+  CloudfrontDefaultTTL:
+    Type: Number
+    Description: The default time in seconds that objects stay in CloudFront cache.
+    Default: 0
+  DomainName:
+    Type: String
+    Description: The domain for the PGA.Coach website
+
+Resources:
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  FrontendCloudfront:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref DomainName
+          - !Sub "www.${DomainName}"
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          DefaultTTL: !Ref CloudfrontDefaultTTL
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: true
+          TargetOriginId: !Ref FrontendBucket
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        Origins:
+          - Id: !Ref FrontendBucket
+            DomainName: !Sub ${BucketName}.s3-website-${AWS::Region}.amazonaws.com
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+        ViewerCertificate:
+          AcmCertificateArn: !ImportValue PGA-COACH-CERT
+          SslSupportMethod: sni-only
+
+  FrontendRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Type: A
+      Name: !Ref DomainName
+      HostedZoneId: !ImportValue PGA-COACH-HOSTED-ZONE
+      AliasTarget:
+        DNSName: !GetAtt FrontendCloudfront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  FrontendWwwRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Type: A
+      Name: !Sub "www.${DomainName}"
+      HostedZoneId: !ImportValue PGA-COACH-HOSTED-ZONE
+      AliasTarget:
+        DNSName: !GetAtt FrontendCloudfront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  WebsiteURL:
+    Description: PGA.Coach website URL
+    Value: !Sub https://www.${DomainName}
+    Export:
+      Name: PGA-COACH-SITE-URL
